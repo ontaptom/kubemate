@@ -1,0 +1,29 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Logs and databases
+*.log
+*.sqlite
+*.db
+
+# venv
+venv*/
+
+# Output directories
+build/
+dist/
+*.egg-info/
+*.egg
+
+# IDE and editor files
+.idea/
+.vscode/
+*.sublime*
+*.pydevproject
+*.project
+
+# Miscellaneous
+*.pyc
+.DS_Store
