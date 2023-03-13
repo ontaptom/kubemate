@@ -8,9 +8,8 @@ Kubernetes using natural language queries and OpenAI's GPT-3 language model.
 import os
 import re
 import sys
-import subprocess
+import secrets
 import argparse
-import shlex
 from time import sleep
 import openai
 
@@ -19,7 +18,7 @@ class KubeMate:
     """
     kubemate is an OpenAI-powered assistant for managing Kubernetes resources.
     """
-    
+
     def __init__(self, openai_model="text-davinci-003"):
 
         self.openai_model = openai_model
@@ -31,16 +30,25 @@ class KubeMate:
         """
 
         return f"\033[94m{text}\033[0m"
-    
+
     def animate(self, text):
         """
         Animates the specified text in the console.
         """
 
         for char in text:
-            sleep(0.05)
+            sleep(0.03)
             print(char, end='', flush=True)
         print()
+
+    def propose_filename(self):
+        """
+        Proposes a filename for the YAML output to be saved at..
+        """
+
+        random_filename = secrets.token_hex(3)
+
+        return f"/tmp/kubemate_{random_filename}.yaml"
 
     def call_openai_api(self, query):
         """
@@ -63,6 +71,10 @@ class KubeMate:
             print("Error with OpenAI API request: ", api_error)
             sys.exit(1)
 
+        # print("\n\n debug \n\n")
+        # print(response['choices'][0])
+        # print("\n\n debug \n\n")
+
         return response['choices'][0]['text']
 
     def adjust_yaml(self, yaml):
@@ -70,10 +82,21 @@ class KubeMate:
         Adjusts the YAML returned by the OpenAI API to be more readable.
         """
 
-        # remove leading spaces
-        yaml = yaml.replace('\n                ', '\n')
+        # find if the whole output has unnecessary leading spaces
+        leading_spaces = re.search(r'\n\s+(?=apiVersion)', yaml)
+        if leading_spaces:
+            yaml = yaml.replace(leading_spaces.group(0), '\n')
+
+        # add new line at the end of yaml
+        if not yaml.endswith('\n'):
+            yaml += '\n'
+        
+        # remove new line if yaml starts with \n
+        if yaml.startswith('\n'):
+            yaml = yaml[1:]
+
         return yaml
-    
+
     def multiline_output(self, command, sep=' \\ \n\t'):
         """
         Check if command is 100 characters or more, if so, it adds ' \\ \n\t' or other separator
@@ -90,7 +113,7 @@ class KubeMate:
                 command = command[command[:100].rfind(' ')+1:]
             lines.append(command) # add the last line
             return ''.join(lines)
-        
+
     def explain(self,query):
         """
         Explain the query to the user
@@ -113,17 +136,30 @@ class KubeMate:
         # adjust YAML returned by the API
         api_response = self.adjust_yaml(api_response)
         # generate list of commands from the API response
-        print("api response is:")
+        print("Proposed solution:")
         #print(api_response)
         self.animate(self.blue_text(api_response))
-        print("")
 
+        answer = input("Would you like to save this solution to a file? [y/N]: ").strip().lower()
+        if answer in {"y", "yes"}:
+            proposed_filename = self.propose_filename()
+            filename = input(f"Filename [{self.blue_text(proposed_filename)}]: ").strip()
+            if not filename:
+                filename = proposed_filename
+            try:
+                with open(filename, "w", encoding="utf-8") as f:
+                    f.write(api_response)
+            except Exception as file_error:
+                print(f"Error writing to file: {file_error}")
+                sys.exit(1)
+
+            print(f"Solution saved to {self.blue_text(filename)}")
 
 
 
 def main():
     """ Main function to run kubemate."""
-    
+
     openai_api_key = os.environ.get('OPENAI_API_KEY')
     if not openai_api_key:
         print("kubemate uses OpenAI API to assist user with K8s management. To use this tool "
@@ -150,6 +186,7 @@ def main():
     args = parser.parse_args()
 
     model = "text-davinci-003"
+    # model = "code-davinci-002"
 
     kubemate = KubeMate(openai_model=model)
     if args.explain:
