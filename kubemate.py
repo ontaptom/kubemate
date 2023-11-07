@@ -19,9 +19,10 @@ class KubeMate:
     kubemate is an OpenAI-powered assistant for managing Kubernetes resources.
     """
 
-    def __init__(self, openai_model="text-davinci-003"):
+    def __init__(self):
 
-        self.openai_model = openai_model
+        from openai import OpenAI
+        self.client = OpenAI()
 
 
     def blue_text(self, text):
@@ -50,32 +51,23 @@ class KubeMate:
 
         return f"/tmp/kubemate_{random_filename}.yaml"
 
-    def call_openai_api(self, query):
+    def call_openai_api(self, query, system_content):
         """
         Calls the OpenAI API to generate gcloud commands based on the specified query. 
         Since returned output is a multiple-line string, it is split into a list of 
         commands and stored in the self.commands variable.
         """
 
-        try:
-            response = openai.Completion.create(
-                model=self.openai_model,
-                prompt=query,
-                temperature=0,
-                max_tokens=350,
-                top_p=1.0,
-                frequency_penalty=0.0,
-                presence_penalty=0.0,
-            )
-        except Exception as api_error:
-            print("Error with OpenAI API request: ", api_error)
-            sys.exit(1)
 
-        # print("\n\n debug \n\n")
-        # print(response['choices'][0])
-        # print("\n\n debug \n\n")
+        completion = self.client.chat.completions.create(
+        model="gpt-3.5-turbo",
+        messages=[
+            {"role": "system", "content": system_content},
+            {"role": "user", "content": query}
+        ]
+        )
 
-        return response['choices'][0]['text']
+        return completion.choices[0].message.content
 
     def adjust_yaml(self, yaml):
         """
@@ -114,15 +106,15 @@ class KubeMate:
             lines.append(command) # add the last line
             return ''.join(lines)
 
-    def explain(self,query):
+    def explain(self,query, system_query):
         """
         Explain the query to the user
         """
-        response = self.call_openai_api(query)
+        response = self.call_openai_api(query, system_query)
         response = response.lstrip() + "\n" # response sometimes contains unnecessary leading spaces
         self.animate(self.blue_text(self.multiline_output(response, sep="\n")))
 
-    def run(self, query):
+    def run(self, query, system_content):
         """
         Main method to run kubemate with the specified query.
 
@@ -131,7 +123,7 @@ class KubeMate:
         """
 
         # call OpenAI API
-        api_response = self.call_openai_api(query)
+        api_response = self.call_openai_api(query, system_content)
 
         # adjust YAML returned by the API
         api_response = self.adjust_yaml(api_response)
@@ -185,24 +177,21 @@ def main():
     
     args = parser.parse_args()
 
-    model = "text-davinci-003"
-    # model = "code-davinci-002"
-
-    kubemate = KubeMate(openai_model=model)
+    kubemate = KubeMate()
     if args.explain:
-        full_query = f"""
-            Context: Explain the following.
-            Prompt: {args.query}
-            Explaination:
-            """
-        kubemate.explain(full_query)
+        system_content = '''
+            You are an assistant that explains given YAML configuration for Kubernetes resources. 
+            Or output from Kubernetes command.
+            '''
+        kubemate.explain(args.query, system_content)
     else:
-        full_query = f"""
-                Context: Return only YAML for kubernetes objects:
-                Prompt: {args.query}
-                """
+        system_content = '''
+            You are an assistant that provides YAML configuration for Kubernetes resources. 
+            Respond to user queries with the appropriate YAML configuration only, 
+            without any additional comments or explanations.
+            '''
 
-        kubemate.run(full_query)
+        kubemate.run(args.query, system_content)
 
 if __name__ == '__main__':
     main()
